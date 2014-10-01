@@ -265,7 +265,7 @@ def post(params):
             out += "%s=%s; " % (param, params[param])
         print out
         
-        conn = http.client.HTTPConnection(pvo_host)
+        conn = httplib.HTTPConnection(pvo_host)
         conn.request("POST", pvo_statusuri, urllib.parse.urlencode(params), headers)
         response = conn.getresponse()
         print("HTTP Status: ", response.status, "; Reason: ", response.reason, " - ", response.read())
