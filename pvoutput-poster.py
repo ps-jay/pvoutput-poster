@@ -4,6 +4,7 @@ import os
 import sqlite3
 import time
 import threading
+import urllib
 
 # XXX Todo: Convert to argparse
 METER_DB = '/opt/energy/raven.sqlite'
@@ -266,7 +267,7 @@ def post(params):
         print out
         
         conn = httplib.HTTPConnection(pvo_host)
-        conn.request("POST", pvo_statusuri, urllib.parse.urlencode(params), headers)
+        conn.request("POST", pvo_statusuri, urllib.urlencode(params), headers)
         response = conn.getresponse()
         print("HTTP Status: ", response.status, "; Reason: ", response.reason, " - ", response.read())
         conn.close()
