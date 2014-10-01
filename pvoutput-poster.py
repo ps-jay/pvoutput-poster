@@ -1,7 +1,20 @@
 import argparse
+import httplib
+import os
 import sqlite3
 import time
 import threading
+
+# XXX Todo: Convert to argparse
+METER_DB = '/opt/energy/raven.sqlite'
+SOLAR_DB = '/opt/energy/solar.sqlite'
+TARIFF = {
+    'peak': 0.3036,
+    'offpeak': 0.1386,
+    'peak_days': [1, 2, 3, 4, 5],
+    'peak_times': [(7, 23)],
+    'export': 0.08,
+}
 
 def gather_results(timestamp, meter_db, solar_db, include_prev_data=False):
     results = {}
@@ -115,8 +128,8 @@ def gather_results(timestamp, meter_db, solar_db, include_prev_data=False):
 def calculate_pvoutput(timestamp, data, tariff=None):
     pvoutput = {}
 
-    pvoutput['d'] = time.strftime("%Y%m%d", time.gmtime(timestamp))
-    pvoutput['t'] = time.strftime("%H:%M", time.gmtime(timestamp))
+    pvoutput['d'] = time.strftime("%Y%m%d", time.localtime(timestamp))
+    pvoutput['t'] = time.strftime("%H:%M", time.localtime(timestamp))
     
     if 'Wh_gen' in data:
         pvoutput['v1'] = "%.0f" % data['Wh_gen']
@@ -131,12 +144,6 @@ def calculate_pvoutput(timestamp, data, tariff=None):
         pvoutput['v3'] = "%.0f" % (
             data['Wh_gen'] + data['Wh_in'] - data['Wh_out']
         )
-
-    # Calculate consumption in W (param v4)
-    # consumption = generation + net
-    if (('W_net' in data) and
-        ('W_gen' in data)):
-        pvoutput['v4'] = "%.0f" % (data['W_gen'] + data['W_net'])
     
     if 'Vin_avg' in data:
         pvoutput['v6'] = "%.1f" % data['Vin_avg']
@@ -152,30 +159,37 @@ def calculate_pvoutput(timestamp, data, tariff=None):
         ('Wh_out' in data)):
         if data['Wh_out'] == 0:
             del(pvoutput['v3'])
-        elif (('prev_Wh_out' in data) and
-            ('prev_Wh_in' in data) and
-            ('prev_Wh_gen' in data) and
-            (tariff is not None)):
-            if data['prev_Wh_out'] != 0:
-                # Calculate $ figures (at 0 and 30 minutes only)
-                imp = data['Wh_in'] - data['prev_Wh_in']
-                exp = data['Wh_out'] - data['prev_Wh_out']
-                gen = data['Wh_gen'] - data['prev_Wh_gen']
-                net = imp - exp
-                con = net + gen
-                day = int(time.strftime("%w", time.gmtime(timestamp)))
-                hour = int(time.strftime("%H", time.gmtime(timestamp)))
-                rate = tariff['offpeak']
-                if day in tariff['peak_days']:
-                    for period in tariff['peak_times']:
-                        if ((hour >= period[0]) and
-                            (hour < period[1])):
-                            rate = tariff['peak']
-                            break
-                cost = (net / 1000.0) * rate
-                if net < 0:
-                    cost = (net / 1000.0) * tariff['export']
-                pvoutput['v9'] = "%.2f" % (cost * 100)
+        else:
+            # Calculate consumption in W (param v4)
+            # consumption = generation + net
+            if (('W_net' in data) and
+                ('W_gen' in data)):
+                pvoutput['v4'] = "%.0f" % (data['W_gen'] + data['W_net'])
+
+            if (('prev_Wh_out' in data) and
+                ('prev_Wh_in' in data) and
+                ('prev_Wh_gen' in data) and
+                (tariff is not None)):
+                if data['prev_Wh_out'] != 0:
+                    # Calculate $ figures (at 0 and 30 minutes only)
+                    imp = data['Wh_in'] - data['prev_Wh_in']
+                    exp = data['Wh_out'] - data['prev_Wh_out']
+                    gen = data['Wh_gen'] - data['prev_Wh_gen']
+                    net = imp - exp
+                    con = net + gen
+                    day = int(time.strftime("%w", time.gmtime(timestamp)))
+                    hour = int(time.strftime("%H", time.gmtime(timestamp)))
+                    rate = tariff['offpeak']
+                    if day in tariff['peak_days']:
+                        for period in tariff['peak_times']:
+                            if ((hour >= period[0]) and
+                                (hour < period[1])):
+                                rate = tariff['peak']
+                                break
+                    cost = (net / 1000.0) * rate
+                    if net < 0:
+                        cost = (net / 1000.0) * tariff['export']
+                    pvoutput['v9'] = "%.2f" % (cost * 100)
 
     if (('v1' in pvoutput) or
         ('v2' in pvoutput) or
@@ -185,55 +199,18 @@ def calculate_pvoutput(timestamp, data, tariff=None):
     
     return None
 
-def main():
-    # XXX Todo: Convert to argparse
-    METER_DB = '/opt/energy/raven.sqlite'
-    SOLAR_DB = '/opt/energy/solar.sqlite'
-    TARIFF = {
-        'peak': 0.3036,
-        'offpeak': 0.1386,
-        'peak_days': [1, 2, 3, 4, 5],
-        'peak_times': [(7, 23)],
-        'export': 0.08,
-    }
-    for i in range(1412088840, int(time.time())):
+def bulk_main(t_start, t_end):
+    for i in range(t_start, t_end):
         if (((int(time.strftime("%M", time.gmtime(i))) % 5) != 0) or
             ((int(time.strftime("%S", time.gmtime(i))) != 0))):
             continue
 
-        timestamp = i
         t_search = i
-        zero_thirty = (int(time.strftime("%M", time.gmtime(timestamp))) % 30) == 0
-        results = gather_results(t_search, METER_DB, SOLAR_DB, include_prev_data=zero_thirty)
-        tariff = None
-        if zero_thirty:
-            tariff = TARIFF
-        pvoutput = calculate_pvoutput(t_search, results, tariff)
-        out = "epoch=%d; " % i
-        curl = "curl " 
-        for element in sorted(iter(pvoutput)):
-            out += "%s=%s; " % (element, pvoutput[element])
-            curl += '-d "%s=%s" ' % (element, pvoutput[element])
-        print out
-        curl += '-H "X-Pvoutput-Apikey: bba36889cc947cd388f11f5d1a1d0e491701f1ab" -H "X-Pvoutput-SystemId: 32094" http://pvoutput.org/service/r2/addstatus.jsp'
-        print curl
 
-if __name__ == "__main__":
-    main()
+        do_it(t_search)
 
 
 def live_main():
-    # XXX Todo: Convert to argparse
-    METER_DB = '/opt/energy/raven.sqlite'
-    SOLAR_DB = '/opt/energy/solar.sqlite'
-    TARIFF = {
-        'peak': 0.3036,
-        'offpeak': 0.1386,
-        'peak_days': [1, 2, 3, 4, 5],
-        'peak_times': [(7, 23)],
-        'export': 0.08,
-    }
-
     timer_exp = threading.Event()
     timer_exp.set()
     timer = None
@@ -258,52 +235,46 @@ def live_main():
         t_now = int(time.time())
         t_search = t_now - (t_now % 60)
 
-        zero_thirty = (int(time.strftime("%M", time.gmtime(timestamp))) % 30) == 0
+        do_it(t_search)
+
+def do_it(t_search):
+        zero_thirty = (int(time.strftime("%M", time.gmtime(t_search))) % 30) == 0
         results = gather_results(t_search, METER_DB, SOLAR_DB, include_prev_data=zero_thirty)
         tariff = None
         if zero_thirty:
             tariff = TARIFF
         pvoutput = calculate_pvoutput(t_search, results, tariff)
-        for element in sorted(iter(pvoutput)):
-            print "%s: %s" % (element, pvoutput[element])
+        post(pvoutput)
 
+def post(params):
+    pvo_key = os.environ["API_KEY"]
+    pvo_systemid = os.environ["SYSTEM_ID"]
+    pvo_host= "pvoutput.org"
+    pvo_statusuri= "/service/r2/addstatus.jsp"
 
-def post( uri, params ):
     try:
-        headers = {'X-Pvoutput-Apikey' : pvo_key,
-                   'X-Pvoutput-SystemId' : pvo_systemid,
-                   "Accept" : "text/plain",
-                   "Content-type": "application/x-www-form-urlencoded"}
+        headers = {
+            'X-Pvoutput-Apikey': pvo_key,
+            'X-Pvoutput-SystemId': pvo_systemid,
+            "Accept": "*/*",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+
+        out = "Data: "
+        for param in sorted(iter(params)):
+            out += "%s=%s; " % (param, params[param])
+        print out
+        
         conn = http.client.HTTPConnection(pvo_host)
-#        conn.set_debuglevel(2) # debug purposes only
-        conn.request("POST", uri, urllib.parse.urlencode(params), headers)
+        conn.request("POST", pvo_statusuri, urllib.parse.urlencode(params), headers)
         response = conn.getresponse()
-        print("Status", response.status, "   Reason:", response.reason, "-", response.read())
-        sys.stdout.flush()
+        print("HTTP Status: ", response.status, "; Reason: ", response.reason, " - ", response.read())
         conn.close()
         return response.status == 200
     except Exception as e:
         print("Exception posting results\n", e)
-        sys.stdout.flush()
         return False
-        
 
-def postPVstatus(timeOfReading, energyUse, powerUse, energyGen, powerGen, volts, temp):
-        params = {'d' : time.strftime('%Y%m%d',timeOfReading),
-            't' : time.strftime('%H:%M', timeOfReading),
-##           'v1' : energyGen,  # for later use if required
-            'v2' : powerGen,
-##           'v3' : energyUse,  # for later use if required
-            'v4' : powerUse,
-##           'v5' : temp,       # for later use if required
-            'v6' : volts,
-            'c1' : 0,
-            'n' : 0}
-        if obs.getLatestObs():
-            params.update({'v5' : obs.lastTempC() })
-            print ("Last weather observation :", obs.lastObservationTime())
-                  
-        print("Params:", params)
-        # POST the data
-        return post(pvo_statusuri, params)
-
+if __name__ == "__main__":
+    #bulk_main(1412088840, int(time.time()))
+    live_main()
