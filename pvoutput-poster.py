@@ -222,8 +222,8 @@ def live_main():
             time.sleep(10)
             continue
 
-        # Wait for a "5th" minute (0, 5, 10, .. 55)
-        if (int(time.strftime("%M")) % 5) != 0:
+        # Wait for a "5th + 1" minute (1, 6, 11, .. 56)
+        if (int(time.strftime("%M")) % 5) != 1:
             time.sleep(5)
             continue
 
@@ -232,9 +232,9 @@ def live_main():
         timer = threading.Timer(240, timer_exp.set)
         timer.start()
 
-        # Calculate start of minute
+        # Calculate start of minute, a minute ago
         t_now = int(time.time())
-        t_search = t_now - (t_now % 60)
+        t_search = t_now - (t_now % 60) - 60
 
         do_it(t_search)
 
