@@ -6,9 +6,11 @@ import time
 import threading
 import urllib
 
-# XXX Todo: Convert to argparse
+# XXX Todo: Convert to argparse, or config file
 METER_DB = '/opt/energy/raven.sqlite'
 SOLAR_DB = '/opt/energy/solar.sqlite'
+PVO_DB = '/opt/energy/pvoutput.sqlite'
+WEATHER_JSON = '/var/opt/energy/weather.json'
 TARIFF = {
     'peak': 0.3036,
     'offpeak': 0.1386,
@@ -54,19 +56,6 @@ def gather_results(timestamp, meter_db, solar_db, include_prev_data=False):
         except:
             pass
 
-    cursor.execute('''
-        SELECT * FROM demand
-            WHERE timestamp <= %d
-            ORDER BY timestamp DESC
-            LIMIT 1
-        ''' % timestamp)
-    values = cursor.fetchall()
-    try:
-        if (timestamp - values[0][0]) < 300:
-            results['W_net'] = values[0][1]
-    except:
-        pass
-
     cursor.close()
     db.close()
 
@@ -83,7 +72,6 @@ def gather_results(timestamp, meter_db, solar_db, include_prev_data=False):
     values = cursor.fetchall()
     try:
         if (timestamp - values[0][0]) < 300:
-            results['W_gen'] = values[0][1]
             results['Wh_gen'] = values[0][2]
     except:
         pass
@@ -161,11 +149,6 @@ def calculate_pvoutput(timestamp, data, tariff=None):
         if data['Wh_out'] == 0:
             del(pvoutput['v3'])
         else:
-            # Calculate consumption in W (param v4)
-            # consumption = generation + net
-            if (('W_net' in data) and
-                ('W_gen' in data)):
-                pvoutput['v4'] = "%.0f" % (data['W_gen'] + data['W_net'])
 
             if (('prev_Wh_out' in data) and
                 ('prev_Wh_in' in data) and
@@ -200,45 +183,15 @@ def calculate_pvoutput(timestamp, data, tariff=None):
     
     return None
 
-def bulk_main(t_start, t_end):
-    for i in range(t_start, t_end):
+def main():
+    
+    for in range(t_start, t_end):
         if (((int(time.strftime("%M", time.gmtime(i))) % 5) != 0) or
             ((int(time.strftime("%S", time.gmtime(i))) != 0))):
             continue
 
         t_search = i
 
-        do_it(t_search)
-
-
-def live_main():
-    timer_exp = threading.Event()
-    timer_exp.set()
-    timer = None
-
-    while True:
-        # Wait for the timer to expire
-        if not timer_exp.is_set():
-            time.sleep(10)
-            continue
-
-        # Wait for a "5th + 1" minute (1, 6, 11, .. 56)
-        if (int(time.strftime("%M")) % 5) != 1:
-            time.sleep(5)
-            continue
-
-        # Reset the timer
-        timer_exp.clear()
-        timer = threading.Timer(240, timer_exp.set)
-        timer.start()
-
-        # Calculate start of minute, a minute ago
-        t_now = int(time.time())
-        t_search = t_now - (t_now % 60) - 60
-
-        do_it(t_search)
-
-def do_it(t_search):
         zero_thirty = (int(time.strftime("%M", time.gmtime(t_search))) % 30) == 0
         results = gather_results(t_search, METER_DB, SOLAR_DB, include_prev_data=zero_thirty)
         tariff = None
@@ -277,5 +230,4 @@ def post(params):
         return False
 
 if __name__ == "__main__":
-    #bulk_main(1412088840, int(time.time()))
-    live_main()
+    main()
