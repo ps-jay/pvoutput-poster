@@ -54,6 +54,8 @@ class PVOutputPoster():
                 LIMIT 1
             ''' % timestamp)
         values = cursor.fetchall()
+        if values == []:
+            return results
         interpolation_needed = True
         try:
             if (timestamp - values[0][0]) >= 360:
@@ -63,7 +65,7 @@ class PVOutputPoster():
                 results['Wh_in'] = values[0][1]
                 results['Wh_out'] = values[0][2]
                 # if timestamp matches exactly, no interpolation req'd.
-                interpolation_needed = (timestamp - values[0][0]) == 0
+                interpolation_needed = not ((timestamp - values[0][0]) == 0)
         except:
             interpolation_needed = False
 
@@ -128,6 +130,8 @@ class PVOutputPoster():
                 LIMIT 1
             ''' % timestamp)
         values = cursor.fetchall()
+        if values == []:
+            return results
         interpolation_needed = True
         try:
             if (timestamp - values[0][0]) >= 360:
@@ -135,7 +139,8 @@ class PVOutputPoster():
                 interpolation_needed = False
             else:
                 results['Wh_gen'] = values[0][2]
-                interpolation_needed = (timestamp - values[0][0]) == 0
+                # if timestamp matches exactly, no interpolation req'd.
+                interpolation_needed = not ((timestamp - values[0][0]) == 0)
         except:
             interpolation_needed = False
 
