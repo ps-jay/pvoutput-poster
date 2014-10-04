@@ -24,7 +24,15 @@ class PVOutputPoster():
             'peak_times': [(7, 23)],
             'export': 0.08,
         }
+
+        self.PVO_KEY = os.environ["API_KEY"]
+        self.PVO_SYSID = os.environ["SYSTEM_ID"]
+        self.PVO_HOST = "pvoutput.org"
+        self.PVO_ADDSTATUS = "/service/r2/addstatus.jsp"
+        self.PVO_GETSTATUS = "/service/r2/getstatus.jsp"
+
         self.pvo_db = sqlite3.connect(self.PVO_DB)
+        self.pvo_db.row_factory = sqlite3.Row
         self.cursor = self.pvo_db.cursor()
 
     def _interpolate_value(self, t1, t2, v1, v2):
@@ -213,9 +221,6 @@ class PVOutputPoster():
     def _calculate_pvoutput(self, timestamp, data):
         pvoutput = {}
 
-        pvoutput['d'] = time.strftime("%Y%m%d", time.localtime(timestamp))
-        pvoutput['t'] = time.strftime("%H:%M", time.localtime(timestamp))
-        
         if 'Wh_gen' in data:
             pvoutput['v1'] = "%.0f" % data['Wh_gen']
 
@@ -244,8 +249,6 @@ class PVOutputPoster():
             pvoutput['v7'] = "%.1f" % data['Cdsp_avg']
         if 'Cmos_avg' in data:
             pvoutput['v8'] = "%.1f" % data['Cmos_avg']
-
-        pvoutput['c1'] = "1"
 
         # Remove once my metering actually works!! (and returns exported data)
         if (('v3' in pvoutput) and
@@ -287,33 +290,73 @@ class PVOutputPoster():
         
         return None
 
-    def post(self, params):
-        pvo_key = os.environ["API_KEY"]
-        pvo_systemid = os.environ["SYSTEM_ID"]
-        pvo_host= "pvoutput.org"
-        pvo_statusuri= "/service/r2/addstatus.jsp"
+    def _upload(self):
+        try:
+            headers = {
+                'X-Pvoutput-Apikey': self.PVO_KEY,
+                'X-Pvoutput-SystemId': self.PVO_SYSID,
+                'X-Rate-Limit': '1',
+            }
+            conn = httplib.HTTPConnection(self.PVO_HOST)
+            conn.request("GET", self.PVO_GETSTATUS, None, headers)
+            response = conn.getresponse()
+            remaining = response.getheader('x-rate-limit-remaining')
+            if remaining is None:
+                return
+            remaining = int(remaining)
+        except Exception as e:
+            print "ERROR: When quering API limit: %s" % str(e)
+
+        # Find stuff to upload
+        self.cursor.execute('''
+            SELECT * FROM pvoutput
+                WHERE need_upload = 1
+                LIMIT %d
+            ''' % (remaining - 15)
+        )
+        rows = self.cursor.fetchall()
+        for row in rows:
+            pvoutput = {}
+            for col in row.keys():
+                if ((col != 'timestamp') and
+                    (col != 'need_upload')
+                ):
+                    if row[col] is not None:
+                        pvoutput[col] = row[col]
+            pvoutput['d'] = time.strftime("%Y%m%d", time.localtime(row['timestamp']))
+            pvoutput['t'] = time.strftime("%H:%M", time.localtime(row['timestamp']))
+            pvoutput['c1'] = "1"
+
+            if self._post(pvoutput):
+                self.cursor.execute('''
+                    UPDATE pvoutput
+                        SET need_upload = 0
+                        WHERE timestamp = %d
+                ''' % row['timestamp'])
+
+    def _post(self, params):
 
         try:
             headers = {
-                'X-Pvoutput-Apikey': pvo_key,
-                'X-Pvoutput-SystemId': pvo_systemid,
+                'X-Pvoutput-Apikey': self.PVO_KEY,
+                'X-Pvoutput-SystemId': self.PVO_SYSID,
                 "Accept": "*/*",
                 "Content-Type": "application/x-www-form-urlencoded",
             }
-
-            out = "Data: "
-            for param in sorted(iter(params)):
-                out += "%s=%s; " % (param, params[param])
-            print out
-            
-            conn = httplib.HTTPConnection(pvo_host)
-            conn.request("POST", pvo_statusuri, urllib.urlencode(params), headers)
+            conn = httplib.HTTPConnection(self.PVO_HOST)
+            conn.request("POST", self.PVO_ADDSTATUS, urllib.urlencode(params), headers)
             response = conn.getresponse()
-            print("HTTP Status: ", response.status, "; Reason: ", response.reason, " - ", response.read())
             conn.close()
-            return response.status == 200
+            if response.status == 200:
+                return True
+            else:
+                print "HTTP POST Failed: code %d; reason %s" % (
+                    response.status,
+                    response.reason,
+                )
+                return False
         except Exception as e:
-            print("Exception posting results\n", e)
+            print "Exception with HTTP POST: %s" % str(e)
             return False
 
     def _init_db(self):
@@ -423,7 +466,6 @@ class PVOutputPoster():
             temp = self._get_temp(row[0])
             if temp is None:
                 continue
-            print (row[0], temp)
             self.cursor.execute('''
                 UPDATE pvoutput
                     SET v5 = %.1f, need_upload = 1
@@ -440,8 +482,6 @@ class PVOutputPoster():
         if temps != {}:
             self._update_temperature_db(temps)
 
-        # XXX API limit ?
-        
         t_start = int(self._get_last_entry() + 60)
         t_end = int(time.time() - (20 * 60))
 
@@ -477,9 +517,9 @@ class PVOutputPoster():
 
         self._fill_in_temperatures((t_end - (4 * 24 * 60 * 60)), t_end)
         self.pvo_db.commit()
+       
+        self._upload()
         
-        # XXX POST
-
         self.pvo_db.commit()
         self.cursor.close()
         self.pvo_db.close()
