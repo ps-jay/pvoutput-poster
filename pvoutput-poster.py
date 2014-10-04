@@ -1,5 +1,7 @@
 import argparse
+import calendar
 import httplib
+import json
 import os
 import sqlite3
 import time
@@ -22,8 +24,15 @@ class PVOutputPoster():
             'peak_times': [(7, 23)],
             'export': 0.08,
         }
+        self.pvo_db = sqlite3.connect(self.PVO_DB)
+        self.cursor = self.pvo_db.cursor()
 
-    def _get_meter_data(self, timestamp):
+    def _interpolate_value(self, t1, t2, v1, v2):
+        delta_t = t2 - t1
+        delta_v = v2 - v1
+        return float(delta_v) / float(delta_t)
+
+    def _lookup_meter_data(self, timestamp):
         results = {}
 
         # Metering data
@@ -37,35 +46,67 @@ class PVOutputPoster():
                 LIMIT 1
             ''' % timestamp)
         values = cursor.fetchall()
+        interpolation_needed = True
         try:
-            if (timestamp - values[0][0]) < 300:
+            if (timestamp - values[0][0]) >= 360:
+                # No valid data near by timestamp
+                interpolation_needed = False
+            else:
                 results['Wh_in'] = values[0][1]
                 results['Wh_out'] = values[0][2]
+                # if timestamp matches exactly, no interpolation req'd.
+                interpolation_needed = (timestamp - values[0][0]) == 0
         except:
-            pass
+            interpolation_needed = False
 
-        # 5-min previous
-        cursor.execute('''
-            SELECT * FROM metered
-                WHERE timestamp <= %d
-                ORDER BY timestamp DESC
-                LIMIT 1
-            ''' % (timestamp - 300)
-        )
-        values = cursor.fetchall()
-        try:
-            if (timestamp - 300 - values[0][0]) < 300:
-                results['prev_Wh_in'] = values[0][1]
-                results['prev_Wh_out'] = values[0][2]
-        except:
-            pass
+        if interpolation_needed:
+            first_time = values[0][0]
+            cursor.execute('''
+                SELECT * FROM metered
+                    WHERE timestamp > %d
+                    ORDER BY timestamp ASC
+                    LIMIT 1
+                ''' % timestamp)
+            values = cursor.fetchall()
+            try:
+                if (values[0][0] - timestamp) >= 360:
+                    # No valid data near by, leave results alone
+                    pass
+                else:
+                    # interpolate
+                    inter_in = self._interpolate_value(
+                        first_time, values[0][0],
+                        results['Wh_in'], values[0][1],
+                    )
+                    inter_in = self._interpolate_value(
+                        first_time, values[0][0],
+                        results['Wh_out'], values[0][2],
+                    )
+                    ts_diff = timestamp - first_time
+                    results['Wh_in'] += inter_in * ts_diff
+                    results['Wh_out'] += inter_out * ts_diff
+            except:
+                pass
 
         cursor.close()
         db.close()
 
         return results
 
-    def _get_solar_data(self, timestamp):
+    def _get_meter_data(self, timestamp):
+        results = self._lookup_meter_data(timestamp)
+        if results == {}:
+            return results
+
+        previous_results = self._lookup_meter_data(timestamp - 300)
+        if 'Wh_in' in previous_results:
+            results['prev_Wh_in'] = previous_results['Wh_in'] 
+        if 'Wh_out' in previous_results:
+            results['prev_Wh_out'] = previous_results['Wh_out'] 
+
+        return results
+
+    def _lookup_solar_data(self, timestamp):
         results = {}
 
         # Solar data
@@ -79,26 +120,40 @@ class PVOutputPoster():
                 LIMIT 1
             ''' % timestamp)
         values = cursor.fetchall()
+        interpolation_needed = True
         try:
-            if (timestamp - values[0][0]) < 300:
+            if (timestamp - values[0][0]) >= 360:
+                # No valid data near by timestamp
+                interpolation_needed = False
+            else:
                 results['Wh_gen'] = values[0][2]
+                interpolation_needed = (timestamp - values[0][0]) == 0
         except:
-            pass
+            interpolation_needed = False
 
-        # 5-min previous
-        cursor.execute('''
-            SELECT * FROM system
-                WHERE timestamp <= %d
-                ORDER BY timestamp DESC
-                LIMIT 1
-            ''' % (timestamp - 300)
-        )
-        values = cursor.fetchall()
-        try:
-            if (timestamp - 300 - values[0][0]) < 300:
-                results['prev_Wh_gen'] = values[0][2]
-        except:
-            pass
+        if interpolation_needed:
+            first_time = values[0][0]
+            cursor.execute('''
+                SELECT * FROM system
+                    WHERE timestamp > %d
+                    ORDER BY timestamp ASC
+                    LIMIT 1
+                ''' % timestamp)
+            values = cursor.fetchall()
+            try:
+                if (values[0][0] - timestamp) >= 360:
+                    # No valid data near by, leave results alone
+                    pass
+                else:
+                    # interpolate
+                    inter_gen = self._interpolate_value(
+                        first_time, values[0][0],
+                        results['Wh_gen'], values[0][2],
+                    )
+                    ts_diff = timestamp - first_time
+                    results['Wh_gen'] += inter_gen * ts_diff
+            except:
+                pass
 
         cursor.execute('''
             SELECT avg(Vin_V), avg(Tdsp_degC), avg(Tmos_degC) FROM panels
@@ -120,6 +175,17 @@ class PVOutputPoster():
 
         cursor.close()
         db.close()
+
+        return results
+
+    def _get_solar_data(self, timestamp):
+        results = self._lookup_solar_data(timestamp)
+        if results == {}:
+            return results
+
+        previous_results = self._lookup_solar_data(timestamp - 300)
+        if 'Wh_gen' in previous_results:
+            results['prev_Wh_gen'] = previous_results['Wh_gen']
 
         return results
 
@@ -161,6 +227,16 @@ class PVOutputPoster():
             pvoutput['v3'] = "%.0f" % (
                 data['Wh_gen'] + data['Wh_in'] - data['Wh_out']
             )
+
+        if not (
+            ('v1' in pvoutput) or
+            ('v3' in pvoutput)
+        ):
+            return None
+        
+        air_temp = self._get_temp(timestamp)
+        if air_temp is not None:
+            pvoutput['v5'] = "%.1f" % air_temp
 
         if 'Vin_avg' in data:
             pvoutput['v6'] = "%.1f" % data['Vin_avg']
@@ -206,9 +282,7 @@ class PVOutputPoster():
                     pvoutput['v9'] = "%.2f" % (cost * 100)
 
         if (('v1' in pvoutput) or
-            ('v2' in pvoutput) or
-            ('v3' in pvoutput) or
-            ('v4' in pvoutput)):
+            ('v3' in pvoutput)):
             return pvoutput
         
         return None
@@ -242,8 +316,8 @@ class PVOutputPoster():
             print("Exception posting results\n", e)
             return False
 
-    def _init_db(self, cursor):
-        cursor.execute('''
+    def _init_db(self):
+        self.cursor.execute('''
             CREATE TABLE pvoutput (
                 timestamp INTEGER PRIMARY KEY,
                 v1 INTEGER,
@@ -261,28 +335,115 @@ class PVOutputPoster():
                 need_upload INTEGER NOT NULL
             )
         ''')
-        cursor.execute('''CREATE INDEX need_ul ON pvoutput (need_upload)''')
+        self.cursor.execute('''CREATE INDEX need_ul ON pvoutput (need_upload)''')
+        self.cursor.execute('''CREATE INDEX has_temp ON pvoutput (v5)''')
+        self.cursor.execute('''
+            CREATE TABLE temperature (
+                timestamp INTEGER PRIMARY KEY,
+                degC REAL NOT NULL
+            )
+        ''')
 
-    def _get_last_entry(self, cursor):
-        cursor.execute('''SELECT timestamp FROM pvoutput ORDER BY timestamp DESC LIMIT 1''')
-        db_time = cursor.fetchall()
+    def _get_last_entry(self):
+        self.cursor.execute('''SELECT timestamp FROM pvoutput ORDER BY timestamp DESC LIMIT 1''')
+        db_time = self.cursor.fetchall()
         if db_time == []:
             return 1411603200
         else:
             return db_time[0][0]
 
-    def main(self):
-        # XXX Consume temperature data
-        # XXX API limit ?
+    def _get_temperature_data(self):
+        with open(self.WEATHER_JSON, 'rb') as fh:
+            data = json.load(fh)['observations']['data']
+        temps = {}
+        for obs in data:
+            try:
+                epoch = calendar.timegm(
+                    time.strptime(obs['aifstime_utc'], "%Y%m%d%H%M%S")
+                )
+                temps["%.0f" % epoch] = obs['air_temp']
+            except:
+                print "ERROR: Issue with BOM data"
 
-        pvo_db = sqlite3.connect(self.PVO_DB)
-        cursor = pvo_db.cursor()
+        return temps
+
+    def _update_temperature_db(self, temps):
+        for temp in temps:
+            self.cursor.execute('''
+                INSERT OR REPLACE INTO temperature VALUES (
+                    ?, ?
+                )
+            ''', (temp, temps[temp],)
+            )
+
+    def _get_temp(self, timestamp):
+        self.cursor.execute('''
+            SELECT * FROM temperature
+                WHERE timestamp <= %d
+                ORDER BY timestamp DESC
+                LIMIT 1
+            ''' % timestamp)
+        try:
+            first_value = self.cursor.fetchall()[0]
+            if (timestamp - first_value[0]) > 3600:
+                return None
+            elif (timestamp - first_value[0]) == 0:
+                return first_value[1]
+        except:
+            return None
+
+        self.cursor.execute('''
+            SELECT * FROM temperature
+                WHERE timestamp > %d
+                ORDER BY timestamp ASC
+                LIMIT 1
+            ''' % timestamp)
+        try:
+            second_value = self.cursor.fetchall()[0]
+            if (second_value[0] - timestamp) > 3600:
+                return None
+            elif (second_value[0] - timestamp) == 0:
+                return second_value[1]
+
+            inter_t = self._interpolate_value(
+                first_value[0], second_value[0],
+                first_value[1], second_value[1],
+            )
+            ts_diff = timestamp - first_value[0]
+            return first_value[1] + (inter_t * ts_diff)
+        except:
+            return None
+
+    def _fill_in_temperatures(self, t_start, t_end):
+        self.cursor.execute('''
+            SELECT timestamp FROM pvoutput
+                WHERE v5 is NULL''')
+        nov5 = self.cursor.fetchall()
+        for row in nov5:
+            temp = self._get_temp(row[0])
+            if temp is None:
+                continue
+            print (row[0], temp)
+            self.cursor.execute('''
+                UPDATE pvoutput
+                    SET v5 = %.1f, need_upload = 1
+                    WHERE timestamp = %d
+            ''' % (temp, row[0]))
+
+    def main(self):
+
+        # make an argparse option?
+        # self._init_db()
+        # exit(1)
         
-        # argparse option?
-        #self._init_db(cursor)
+        temps = self._get_temperature_data()
+        if temps != {}:
+            self._update_temperature_db(temps)
+
+        # XXX API limit ?
         
-        t_start = int(self._get_last_entry(cursor) + 60)
-        t_end = int(time.time() - 60)
+        t_start = int(self._get_last_entry() + 60)
+        t_end = int(time.time() - (20 * 60))
 
         for t in range(t_start, t_end):
             if (((int(time.strftime("%M", time.gmtime(t))) % 5) != 0) or
@@ -296,7 +457,6 @@ class PVOutputPoster():
             pvoutput = self._calculate_pvoutput(t, data)
 
             if pvoutput is not None:
-                # XXX POST, 200 = need_upload = 0; !200 = need_upload = 1
                 cols = "timestamp, need_upload, "
                 data = "%s, 1, " % t
                 for key in pvoutput:
@@ -307,18 +467,22 @@ class PVOutputPoster():
                         continue
                     cols += "%s, " % key
                     data += '%s, ' % pvoutput[key]
-                cursor.execute('''
+                self.cursor.execute(
+                '''
                     INSERT INTO pvoutput (%s)
                         VALUES (%s)
                     ''' % (cols[:-2], data[:-2])
                 )
-        pvo_db.commit()
+        self.pvo_db.commit()
 
-        # Search for missing v5's in the temp data range
-        # Fill in missing v5's
-        # reset need_ul if filled in v5
-        cursor.close()
-        pvo_db.close()
+        self._fill_in_temperatures((t_end - (4 * 24 * 60 * 60)), t_end)
+        self.pvo_db.commit()
+        
+        # XXX POST
+
+        self.pvo_db.commit()
+        self.cursor.close()
+        self.pvo_db.close()
 
 if __name__ == "__main__":
     pvo = PVOutputPoster()
