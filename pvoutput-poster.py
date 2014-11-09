@@ -173,7 +173,7 @@ class PVOutputPoster():
                 pass
 
         cursor.execute('''
-            SELECT avg(Vin_V), avg(Tdsp_degC), avg(Tmos_degC) FROM panels
+            SELECT total(Vin_V), avg(Tdsp_degC), avg(Tmos_degC) FROM panels
                 WHERE (timestamp > %d) AND (timestamp <= %d)
             ''' % (
                 (timestamp - self.INTERVAL),
@@ -182,7 +182,7 @@ class PVOutputPoster():
         values = cursor.fetchall()
         try:
             if values[0][0] is not None:
-                results['Vin_avg'] = values[0][0]
+                results['Vin_total'] = values[0][0]
             if values[0][1] is not None:
                 results['Cdsp_avg'] = values[0][1]
             if values[0][2] is not None:
@@ -252,8 +252,8 @@ class PVOutputPoster():
         if air_temp is not None:
             pvoutput['v5'] = "%.1f" % air_temp
 
-        if 'Vin_avg' in data:
-            pvoutput['v6'] = "%.1f" % data['Vin_avg']
+        if 'Vin_total' in data:
+            pvoutput['v6'] = "%.1f" % data['Vin_total']
         if 'Cdsp_avg' in data:
             pvoutput['v7'] = "%.1f" % data['Cdsp_avg']
         if 'Cmos_avg' in data:
