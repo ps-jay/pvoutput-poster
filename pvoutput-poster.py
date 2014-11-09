@@ -25,6 +25,10 @@ class PVOutputPoster():
             'export': 0.08,
         }
 
+        self.INTERVAL = 600
+        self.MODULO = (self.INTERVAL/60)
+        self.WHCONVERT = (60/self.MODULO)
+
         self.PVO_KEY = os.environ["API_KEY"]
         self.PVO_SYSID = os.environ["SYSTEM_ID"]
         self.PVO_HOST = "pvoutput.org"
@@ -58,7 +62,7 @@ class PVOutputPoster():
             return results
         interpolation_needed = True
         try:
-            if (timestamp - values[0][0]) >= 360:
+            if (timestamp - values[0][0]) >= (self.INTERVAL + 60):
                 # No valid data near by timestamp
                 interpolation_needed = False
             else:
@@ -79,7 +83,7 @@ class PVOutputPoster():
                 ''' % timestamp)
             values = cursor.fetchall()
             try:
-                if (values[0][0] - timestamp) >= 360:
+                if (values[0][0] - timestamp) >= (self.INTERVAL + 60):
                     # No valid data near by, leave results alone
                     pass
                 else:
@@ -108,7 +112,7 @@ class PVOutputPoster():
         if results == {}:
             return results
 
-        previous_results = self._lookup_meter_data(timestamp - 300)
+        previous_results = self._lookup_meter_data(timestamp - self.INTERVAL)
         if 'Wh_in' in previous_results:
             results['prev_Wh_in'] = previous_results['Wh_in'] 
         if 'Wh_out' in previous_results:
@@ -134,7 +138,7 @@ class PVOutputPoster():
             return results
         interpolation_needed = True
         try:
-            if (timestamp - values[0][0]) >= 360:
+            if (timestamp - values[0][0]) >= (self.INTERVAL + 60):
                 # No valid data near by timestamp
                 interpolation_needed = False
             else:
@@ -154,7 +158,7 @@ class PVOutputPoster():
                 ''' % timestamp)
             values = cursor.fetchall()
             try:
-                if (values[0][0] - timestamp) >= 360:
+                if (values[0][0] - timestamp) >= (self.INTERVAL + 60):
                     # No valid data near by, leave results alone
                     pass
                 else:
@@ -172,7 +176,7 @@ class PVOutputPoster():
             SELECT avg(Vin_V), avg(Tdsp_degC), avg(Tmos_degC) FROM panels
                 WHERE (timestamp > %d) AND (timestamp <= %d)
             ''' % (
-                (timestamp - 300),
+                (timestamp - self.INTERVAL),
                 timestamp,
             ))
         values = cursor.fetchall()
@@ -196,7 +200,7 @@ class PVOutputPoster():
         if results == {}:
             return results
 
-        previous_results = self._lookup_solar_data(timestamp - 300)
+        previous_results = self._lookup_solar_data(timestamp - self.INTERVAL)
         if 'Wh_gen' in previous_results:
             results['prev_Wh_gen'] = previous_results['Wh_gen']
 
@@ -209,7 +213,7 @@ class PVOutputPoster():
         cursor.execute('''
             SELECT avg(watts) FROM demand
                 WHERE (timestamp > ?) AND (timestamp <= ?) AND (watts < 0)
-            ''', ((timestamp - 300), timestamp)
+            ''', ((timestamp - self.INTERVAL), timestamp)
         )
         value = cursor.fetchall()
         cursor.close()
@@ -220,8 +224,8 @@ class PVOutputPoster():
         if value[0][0] is None:
             return 0
         
-        # 5min -> 1hr convert
-        return value[0][0] / 12.0
+        # Wh convert convert
+        return value[0][0] / float(self.WHCONVERT)
 
     def _calculate_pvoutput(self, timestamp, data):
         pvoutput = {}
@@ -312,6 +316,10 @@ class PVOutputPoster():
         except Exception as e:
             print "ERROR: When quering API limit: %s" % str(e)
 
+        if remaining <= 15:
+            print "ERROR: less than 15 API calls remaining"
+            return
+
         # Find stuff to upload
         self.cursor.execute('''
             SELECT * FROM pvoutput
@@ -331,6 +339,7 @@ class PVOutputPoster():
             pvoutput['d'] = time.strftime("%Y%m%d", time.localtime(row['timestamp']))
             pvoutput['t'] = time.strftime("%H:%M", time.localtime(row['timestamp']))
             pvoutput['c1'] = "1"
+            # print "-> %s %s" % (pvoutput['d'], pvoutput['t'])
 
             if self._post(pvoutput):
                 self.cursor.execute('''
@@ -491,9 +500,10 @@ class PVOutputPoster():
         t_end = int(time.time() - (20 * 60))
 
         for t in range(t_start, t_end):
-            if (((int(time.strftime("%M", time.gmtime(t))) % 5) != 0) or
+            if (((int(time.strftime("%M", time.gmtime(t))) % self.MODULO) != 0) or
                 ((int(time.strftime("%S", time.gmtime(t))) != 0))):
                 continue
+            # print time.strftime("%Y%m%d %H:%M", time.localtime(t))
 
             data = dict(
                 self._get_meter_data(t).items() +
