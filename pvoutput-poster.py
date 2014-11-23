@@ -179,54 +179,55 @@ class PVOutputPoster():
         except:
             return {}
 
-        try:
-            # Temperature data
-            cursor.execute('''
-                SELECT avg(Tdsp_degC), avg(Tmos_degC) FROM panels
-                    WHERE (timestamp > %d) AND (timestamp <= %d)
-                ''' % (
-                    first_time,
-                    second_time,
-                ))
-            values = cursor.fetchall()
-
-            if values[0][1] is not None:
-                results['Cdsp_avg'] = values[0][1]
-            if values[0][2] is not None:
-                results['Cmos_avg'] = values[0][2]
-        except:
-            pass
-
-        try:
-            # Voltage data
-            cursor.execute('''
-                SELECT DISTINCT macrf FROM panels
-                    WHERE (timestamp > %d) AND (timestamp <= %d)
-                ''' % (
-                    first_time,
-                    second_time,
-                ))
-            values = cursor.fetchall()
-            panels = []
-            v_total = 0
-            for v in values:
-                panels.append(v[0])
-            for panel in panels:
+        if (second_time - first_time) < (self.INTERVAL * 3):
+            try:
+                # Temperature data
                 cursor.execute('''
-                    SELECT avg(Vin_V) FROM panels
-                        WHERE (macrf = '%s') AND
-                            (timestamp > %d) AND (timestamp <= %d)
+                    SELECT avg(Tdsp_degC), avg(Tmos_degC) FROM panels
+                        WHERE (timestamp > %d) AND (timestamp <= %d)
                     ''' % (
-                        panel,
                         first_time,
                         second_time,
-                ))
+                    ))
                 values = cursor.fetchall()
-                v_total += values[0][0]
 
-            results['Vin_total'] = v_total
-        except:
-            pass
+                if values[0][1] is not None:
+                    results['Cdsp_avg'] = values[0][1]
+                if values[0][2] is not None:
+                    results['Cmos_avg'] = values[0][2]
+            except:
+                pass
+
+            try:
+                # Voltage data
+                cursor.execute('''
+                    SELECT DISTINCT macrf FROM panels
+                        WHERE (timestamp > %d) AND (timestamp <= %d)
+                    ''' % (
+                        first_time,
+                        second_time,
+                    ))
+                values = cursor.fetchall()
+                panels = []
+                v_total = 0
+                for v in values:
+                    panels.append(v[0])
+                for panel in panels:
+                    cursor.execute('''
+                        SELECT avg(Vin_V) FROM panels
+                            WHERE (macrf = '%s') AND
+                                (timestamp > %d) AND (timestamp <= %d)
+                        ''' % (
+                            panel,
+                            first_time,
+                            second_time,
+                    ))
+                    values = cursor.fetchall()
+                    v_total += values[0][0]
+
+                results['Vin_total'] = v_total
+            except:
+                pass
 
         cursor.close()
         db.close()
