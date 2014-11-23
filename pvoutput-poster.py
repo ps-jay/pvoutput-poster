@@ -59,48 +59,45 @@ class PVOutputPoster():
             ''' % timestamp)
         values = cursor.fetchall()
         if values == []:
-            return results
+            return {}
+
         interpolation_needed = True
         try:
-            if (timestamp - values[0][0]) >= (self.INTERVAL + 60):
-                # No valid data near by timestamp
-                interpolation_needed = False
-            else:
-                results['Wh_in'] = values[0][1]
-                results['Wh_out'] = values[0][2]
-                # if timestamp matches exactly, no interpolation req'd.
-                interpolation_needed = not ((timestamp - values[0][0]) == 0)
+            results['Wh_in'] = values[0][1]
+            results['Wh_out'] = values[0][2]
+            # if timestamp matches exactly, no interpolation req'd.
+            interpolation_needed = not ((timestamp - values[0][0]) == 0)
         except:
-            interpolation_needed = False
+            return {}
 
-        if interpolation_needed:
-            first_time = values[0][0]
-            cursor.execute('''
-                SELECT * FROM metered
-                    WHERE timestamp > %d
-                    ORDER BY timestamp ASC
-                    LIMIT 1
-                ''' % timestamp)
-            values = cursor.fetchall()
-            try:
-                if (values[0][0] - timestamp) >= (self.INTERVAL + 60):
-                    # No valid data near by, leave results alone
-                    pass
-                else:
-                    # interpolate
-                    inter_in = self._interpolate_value(
-                        first_time, values[0][0],
-                        results['Wh_in'], values[0][1],
-                    )
-                    inter_in = self._interpolate_value(
-                        first_time, values[0][0],
-                        results['Wh_out'], values[0][2],
-                    )
-                    ts_diff = timestamp - first_time
-                    results['Wh_in'] += inter_in * ts_diff
-                    results['Wh_out'] += inter_out * ts_diff
-            except:
-                pass
+        first_time = values[0][0]
+        cursor.execute('''
+            SELECT * FROM metered
+                WHERE timestamp > %d
+                ORDER BY timestamp ASC
+                LIMIT 1
+            ''' % timestamp)
+        values = cursor.fetchall()
+        if values == []:
+            return {}
+
+        try:
+            second_time = values[0][0]
+
+            if interpolation_needed:
+                inter_in = self._interpolate_value(
+                    first_time, second_time,
+                    results['Wh_in'], values[0][1],
+                )
+                inter_in = self._interpolate_value(
+                    first_time, second_time,
+                    results['Wh_out'], values[0][2],
+                )
+                ts_diff = timestamp - first_time
+                results['Wh_in'] += inter_in * ts_diff
+                results['Wh_out'] += inter_out * ts_diff
+        except:
+            return {}
 
         cursor.close()
         db.close()
