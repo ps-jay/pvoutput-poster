@@ -135,58 +135,96 @@ class PVOutputPoster():
             ''' % timestamp)
         values = cursor.fetchall()
         if values == []:
-            return results
+            return {}
+
         interpolation_needed = True
+        # Find point #1
         try:
-            if (timestamp - values[0][0]) >= (self.INTERVAL + 60):
-                # No valid data near by timestamp
-                interpolation_needed = False
-            else:
-                results['Wh_gen'] = values[0][2]
-                # if timestamp matches exactly, no interpolation req'd.
-                interpolation_needed = not ((timestamp - values[0][0]) == 0)
+            if time.localtime(values[0][0])['tm_yday'] != time.localtime(timestamp)['tm_day']:
+                # Closest timestamps are not the same day; skip
+                return {}
+
+            # if timestamp matches exactly, no interpolation req'd.
+            interpolation_needed = not ((timestamp - values[0][0]) == 0)
+            results['Wh_gen'] = values[0][2]
         except:
-            interpolation_needed = False
+            return {}
 
-        if interpolation_needed:
-            first_time = values[0][0]
-            cursor.execute('''
-                SELECT * FROM system
-                    WHERE timestamp > %d
-                    ORDER BY timestamp ASC
-                    LIMIT 1
-                ''' % timestamp)
-            values = cursor.fetchall()
-            try:
-                if (values[0][0] - timestamp) >= (self.INTERVAL + 60):
-                    # No valid data near by, leave results alone
-                    pass
-                else:
-                    # interpolate
-                    inter_gen = self._interpolate_value(
-                        first_time, values[0][0],
-                        results['Wh_gen'], values[0][2],
-                    )
-                    ts_diff = timestamp - first_time
-                    results['Wh_gen'] += inter_gen * ts_diff
-            except:
-                pass
-
+        # Find point #2
+        first_time = values[0][0]
         cursor.execute('''
-            SELECT total(Vin_V), avg(Tdsp_degC), avg(Tmos_degC) FROM panels
-                WHERE (timestamp > %d) AND (timestamp <= %d)
-            ''' % (
-                (timestamp - self.INTERVAL),
-                timestamp,
-            ))
+            SELECT * FROM system
+                WHERE timestamp > %d
+                ORDER BY timestamp ASC
+                LIMIT 1
+            ''' % timestamp)
         values = cursor.fetchall()
+        if values == []:
+            return {}
+
         try:
-            if values[0][0] is not None:
-                results['Vin_total'] = values[0][0]
+            if time.localtime(values[0][0])['tm_yday'] != time.localtime(timestamp)['tm_day']:
+                # Closest timestamps are not the same day; skip
+                return {}
+
+            second_time = values[0][0]
+
+            if interpolation_needed:
+                inter_gen = self._interpolate_value(
+                    first_time, second_time,
+                    results['Wh_gen'], values[0][2],
+                )
+                ts_diff = timestamp - first_time
+                results['Wh_gen'] += inter_gen * ts_diff
+        except:
+            return {}
+
+        try:
+            # Temperature data
+            cursor.execute('''
+                SELECT avg(Tdsp_degC), avg(Tmos_degC) FROM panels
+                    WHERE (timestamp > %d) AND (timestamp <= %d)
+                ''' % (
+                    first_time,
+                    second_time,
+                ))
+            values = cursor.fetchall()
+
             if values[0][1] is not None:
                 results['Cdsp_avg'] = values[0][1]
             if values[0][2] is not None:
                 results['Cmos_avg'] = values[0][2]
+        except:
+            pass
+
+        try:
+            # Voltage data
+            cursor.execute('''
+                SELECT DISTINCT macrf FROM panels
+                    WHERE (timestamp > %d) AND (timestamp <= %d)
+                ''' % (
+                    first_time,
+                    second_time,
+                ))
+            values = cursor.fetchall()
+            panels = []
+            v_total = 0
+            for v in values:
+                panels.append(v[0])
+            for panel in panels:
+                cursor.execute('''
+                    SELECT avg(Vin_V) FROM panels
+                        WHERE (macrf = '%s') AND
+                            (timestamp > %d) AND (timestamp <= %d)
+                    ''' % (
+                        panel,
+                        first_time,
+                        second_time,
+                ))
+                values = cursor.fetchall()
+                v_total += values[0][0]
+
+            results['Vin_total'] = v_total
         except:
             pass
 
