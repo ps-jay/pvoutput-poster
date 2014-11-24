@@ -4,6 +4,7 @@ import httplib
 import json
 import os
 import sqlite3
+import sys
 import time
 import threading
 import urllib
@@ -28,6 +29,9 @@ class PVOutputPoster():
         self.INTERVAL = 600
         self.MODULO = (self.INTERVAL/60)
         self.WHCONVERT = (60/self.MODULO)
+
+        # Always assume some load (in W)
+        self.BASELOAD = 200
 
         self.PVO_KEY = os.environ["API_KEY"]
         self.PVO_SYSID = os.environ["SYSTEM_ID"]
@@ -89,7 +93,7 @@ class PVOutputPoster():
                     first_time, second_time,
                     results['Wh_in'], values[0][1],
                 )
-                inter_in = self._interpolate_value(
+                inter_out = self._interpolate_value(
                     first_time, second_time,
                     results['Wh_out'], values[0][2],
                 )
@@ -137,10 +141,6 @@ class PVOutputPoster():
         interpolation_needed = True
         # Find point #1
         try:
-            if time.localtime(values[0][0])['tm_yday'] != time.localtime(timestamp)['tm_day']:
-                # Closest timestamps are not the same day; skip
-                return {}
-
             # if timestamp matches exactly, no interpolation req'd.
             interpolation_needed = not ((timestamp - values[0][0]) == 0)
             results['Wh_gen'] = values[0][2]
@@ -160,10 +160,6 @@ class PVOutputPoster():
             return {}
 
         try:
-            if time.localtime(values[0][0])['tm_yday'] != time.localtime(timestamp)['tm_day']:
-                # Closest timestamps are not the same day; skip
-                return {}
-
             second_time = values[0][0]
 
             if interpolation_needed:
@@ -278,6 +274,20 @@ class PVOutputPoster():
                 data['Wh_gen'] + data['Wh_in'] - data['Wh_out']
             )
 
+        if (('prev_Wh_out' in data) and
+            ('prev_Wh_in' in data) and
+            ('prev_Wh_gen' in data)):
+            data['prev_Wh_cons'] = data['prev_Wh_gen'] + data['prev_Wh_in'] - data['prev_Wh_out']
+            if 'v3' in pvoutput:
+                # If current consumption is less than previous, then fix
+                # (which is possible due to the meter counting in 
+                # 100Wh increments, and the solar counting in 1Wh increments)
+                if int(pvoutput['v3']) <= int("%.0f" % data['prev_Wh_cons']):
+                    pvoutput['v3'] = "%.0f" % (
+                        data['prev_Wh_cons'] + (self.BASELOAD / float(self.WHCONVERT))
+                    )
+
+
         if not (
             ('v1' in pvoutput) or
             ('v3' in pvoutput)
@@ -329,17 +339,17 @@ class PVOutputPoster():
                         cost = (net / 1000.0) * tariff['export']
                     pvoutput['v9'] = "%.2f" % (cost * 100)
 
-        try:
-            if self.story:
-                print "At %s the panels had produced %dWh, we'd imported %dWh" + \
-                    " and exported %dWh, resulting in consumption of %dWh" % (
-                    pvoutput['v1'],
-                    data['Wh_in'],
-                    data['Wh_out'],
-                    pvoutput['v3'],
-                )
-        except:
-            pass
+        if self.verbose:
+            sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
+            if 'Wh_in' in data:
+                sys.stdout.write("; import=%dWh" % data['Wh_in'])
+            if 'Wh_out' in data:
+                sys.stdout.write("; export=%dWh" % data['Wh_out'])
+            if 'v3' in pvoutput:
+                sys.stdout.write("; consume=%dWh" % int(pvoutput['v3']))
+            if 'v1' in pvoutput:
+                sys.stdout.write("; produce=%dWh" % int(pvoutput['v1']))
+            print ""
 
         if (('v1' in pvoutput) or
             ('v3' in pvoutput)):
@@ -541,7 +551,7 @@ class PVOutputPoster():
         # exit(1)
 
         # another arg
-        self.story = True
+        self.verbose = True
         
         temps = self._get_temperature_data()
         if temps != {}:
@@ -560,8 +570,8 @@ class PVOutputPoster():
                 self._get_meter_data(t).items() +
                 self._get_solar_data(t).items()
             )
-            pvoutput = self._calculate_pvoutput(t, data)
 
+            pvoutput = self._calculate_pvoutput(t, data)
             if pvoutput is not None:
                 cols = "timestamp, need_upload, "
                 data = "%s, 1, " % t
