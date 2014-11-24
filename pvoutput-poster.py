@@ -303,7 +303,7 @@ class PVOutputPoster():
                     data['Wh_gen'] + data['Wh_in'] - self._fake_Wh_out(timestamp)
                 )
             elif data['Wh_out'] != 0:
-                print "Wow!  Wh_out data exists!"
+                pass
             elif (('prev_Wh_out' in data) and
                 ('prev_Wh_in' in data) and
                 ('prev_Wh_gen' in data) and
@@ -328,6 +328,18 @@ class PVOutputPoster():
                     if net < 0:
                         cost = (net / 1000.0) * tariff['export']
                     pvoutput['v9'] = "%.2f" % (cost * 100)
+
+        try:
+            if self.story:
+                print "At %s the panels had produced %dWh, we'd imported %dWh" + \
+                    " and exported %dWh, resulting in consumption of %dWh" % (
+                    pvoutput['v1'],
+                    data['Wh_in'],
+                    data['Wh_out'],
+                    pvoutput['v3'],
+                )
+        except:
+            pass
 
         if (('v1' in pvoutput) or
             ('v3' in pvoutput)):
@@ -527,6 +539,9 @@ class PVOutputPoster():
         # make an argparse option?
         # self._init_db()
         # exit(1)
+
+        # another arg
+        self.story = True
         
         temps = self._get_temperature_data()
         if temps != {}:
