@@ -26,7 +26,7 @@ class PVOutputPoster():
             'export': 0.08,
         }
 
-        self.INTERVAL = 600
+        self.INTERVAL = 300
         self.MODULO = (self.INTERVAL/60)
         self.WHCONVERT = (60/self.MODULO)
 
