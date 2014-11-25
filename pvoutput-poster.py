@@ -256,13 +256,40 @@ class PVOutputPoster():
             return 0
         
         # Wh convert convert
-        return value[0][0] / float(self.WHCONVERT)
+        return (value[0][0] / float(self.WHCONVERT)) * (-1)
 
     def _calculate_pvoutput(self, timestamp, data):
         pvoutput = {}
 
         if 'Wh_gen' in data:
             pvoutput['v1'] = "%.0f" % data['Wh_gen']
+
+        # Remove once metering actually works
+        if 'Wh_out' in data:
+            if int(data['Wh_out']) == 0:
+                data['Wh_out'] = self._fake_Wh_out(timestamp)
+        if 'prev_Wh_out' in data:
+            if int(data['prev_Wh_out']) == 0:
+                self.cursor.execute('''
+                    SELECT Wh_out FROM fake_export
+                        WHERE timestamp < %d
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                ''' % (timestamp)
+                )
+                value = self.cursor.fetchall()
+                if value == []:
+                    data['prev_Wh_out'] = 0
+                else:
+                    data['prev_Wh_out'] = value[0][0]
+                data['Wh_out'] += data['prev_Wh_out']
+                self.cursor.execute('''
+                    INSERT INTO fake_export (timestamp, Wh_out)
+                        VALUES (%d, %d)
+                ''' % (
+                    timestamp,
+                    data['Wh_out']
+                ))
 
         # Calculate consumption in Wh (param v3)
         # consumption = generation + import - export
@@ -273,10 +300,20 @@ class PVOutputPoster():
                 data['Wh_gen'] + data['Wh_in'] - data['Wh_out']
             )
 
-        if (('prev_Wh_out' in data) and
-            ('prev_Wh_in' in data) and
-            ('prev_Wh_gen' in data)):
-            data['prev_Wh_cons'] = data['prev_Wh_gen'] + data['prev_Wh_in'] - data['prev_Wh_out']
+            # previous value
+            self.cursor.execute('''
+                SELECT v3 FROM pvoutput
+                    WHERE timestamp < %d
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+            ''' % (timestamp)
+            )
+            value = self.cursor.fetchall()
+            if value == []:
+                data['prev_Wh_cons'] = 0
+            else:
+                data['prev_Wh_cons'] = value[0][0]
+
             if 'v3' in pvoutput:
                 # If current consumption is less than baseload, then adjust
                 # (which is possible due to the meter counting in 
@@ -286,7 +323,6 @@ class PVOutputPoster():
                     pvoutput['v3'] = "%.0f" % (
                         data['prev_Wh_cons'] + bl_Wh
                     )
-
 
         if not (
             ('v1' in pvoutput) or
@@ -305,16 +341,11 @@ class PVOutputPoster():
         if 'Cmos_avg' in data:
             pvoutput['v8'] = "%.1f" % data['Cmos_avg']
 
-        # Remove once my metering actually works!! (and returns exported data)
-        if (('v3' in pvoutput) and
-            ('Wh_out' in data)):
-            if data['Wh_out'] == 0:
-                pvoutput['v3'] = "%.0f" % (
-                    data['Wh_gen'] + data['Wh_in'] - self._fake_Wh_out(timestamp)
-                )
-            elif data['Wh_out'] != 0:
-                pass
-            elif (('prev_Wh_out' in data) and
+# tarrriffing later
+        if None is None:
+            pass
+        else:
+            if (('prev_Wh_out' in data) and
                 ('prev_Wh_in' in data) and
                 ('prev_Wh_gen' in data) and
                 (tariff is not None)):
@@ -589,12 +620,13 @@ class PVOutputPoster():
                         VALUES (%s)
                     ''' % (cols[:-2], data[:-2])
                 )
+
         self.pvo_db.commit()
 
         self._fill_in_temperatures((t_end - (4 * 24 * 60 * 60)), t_end)
         self.pvo_db.commit()
        
-        self._upload()
+        #self._upload()
         
         self.pvo_db.commit()
         self.cursor.close()
