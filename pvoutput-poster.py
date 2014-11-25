@@ -279,12 +279,13 @@ class PVOutputPoster():
             ('prev_Wh_gen' in data)):
             data['prev_Wh_cons'] = data['prev_Wh_gen'] + data['prev_Wh_in'] - data['prev_Wh_out']
             if 'v3' in pvoutput:
-                # If current consumption is less than previous, then fix
+                # If current consumption is less than baseload, then adjust
                 # (which is possible due to the meter counting in 
                 # 100Wh increments, and the solar counting in 1Wh increments)
-                if int(pvoutput['v3']) <= int("%.0f" % data['prev_Wh_cons']):
+                bl_Wh = self.BASELOAD / float(self.WHCONVERT)
+                if int(pvoutput['v3']) <= (data['prev_Wh_cons'] + bl_Wh):
                     pvoutput['v3'] = "%.0f" % (
-                        data['prev_Wh_cons'] + (self.BASELOAD / float(self.WHCONVERT))
+                        data['prev_Wh_cons'] + bl_Wh
                     )
 
 
