@@ -26,12 +26,12 @@ class PVOutputPoster():
             'export': 0.08,
         }
 
-        self.INTERVAL = 300
+        self.INTERVAL = 900
         self.MODULO = (self.INTERVAL/60)
         self.WHCONVERT = (60/self.MODULO)
 
         # Always assume some load (in W)
-        self.BASELOAD = 300
+        self.BASELOAD = 240
 
         self.PVO_KEY = os.environ["API_KEY"]
         self.PVO_SYSID = os.environ["SYSTEM_ID"]
@@ -341,16 +341,10 @@ class PVOutputPoster():
         if 'Cmos_avg' in data:
             pvoutput['v8'] = "%.1f" % data['Cmos_avg']
 
-# tarrriffing later
-        if None is None:
-            pass
-        else:
-            if (('prev_Wh_out' in data) and
-                ('prev_Wh_in' in data) and
-                ('prev_Wh_gen' in data) and
-                (tariff is not None)):
+        if (('prev_Wh_out' in data) and
+            ('prev_Wh_in' in data) and
+            ('prev_Wh_gen' in data)):
                 if data['prev_Wh_out'] != 0:
-                    # Calculate $ figures (at 0 and 30 minutes only)
                     imp = data['Wh_in'] - data['prev_Wh_in']
                     exp = data['Wh_out'] - data['prev_Wh_out']
                     gen = data['Wh_gen'] - data['prev_Wh_gen']
@@ -358,16 +352,16 @@ class PVOutputPoster():
                     con = net + gen
                     day = int(time.strftime("%w", time.gmtime(timestamp)))
                     hour = int(time.strftime("%H", time.gmtime(timestamp)))
-                    rate = tariff['offpeak']
-                    if day in tariff['peak_days']:
-                        for period in tariff['peak_times']:
+                    rate = self.TARIFF['offpeak']
+                    if day in self.TARIFF['peak_days']:
+                        for period in self.TARIFF['peak_times']:
                             if ((hour >= period[0]) and
                                 (hour < period[1])):
-                                rate = tariff['peak']
+                                rate = self.TARIFF['peak']
                                 break
                     cost = (net / 1000.0) * rate
                     if net < 0:
-                        cost = (net / 1000.0) * tariff['export']
+                        cost = (net / 1000.0) * self.TARIFF['export']
                     pvoutput['v9'] = "%.2f" % (cost * 100)
 
         if self.verbose:
@@ -380,6 +374,8 @@ class PVOutputPoster():
                 sys.stdout.write("; consume=%dWh" % int(pvoutput['v3']))
             if 'v1' in pvoutput:
                 sys.stdout.write("; produce=%dWh" % int(pvoutput['v1']))
+            if 'v9' in pvoutput:
+                sys.stdout.write("; cost=%sc" % pvoutput['v9'])
             print ""
 
         if (('v1' in pvoutput) or
@@ -414,7 +410,8 @@ class PVOutputPoster():
             SELECT * FROM pvoutput
                 WHERE need_upload = 1
                 LIMIT %d
-            ''' % (remaining - 15)
+            ''' % 55
+            #''' % (remaining - 15)
         )
         rows = self.cursor.fetchall()
         for row in rows:
@@ -436,6 +433,7 @@ class PVOutputPoster():
                         SET need_upload = 0
                         WHERE timestamp = %d
                 ''' % row['timestamp'])
+                print "Posted %s %s" % (pvoutput['d'], pvoutput['t'])
 
     def _post(self, params):
 
@@ -626,7 +624,7 @@ class PVOutputPoster():
         self._fill_in_temperatures((t_end - (4 * 24 * 60 * 60)), t_end)
         self.pvo_db.commit()
        
-        #self._upload()
+        self._upload()
         
         self.pvo_db.commit()
         self.cursor.close()
