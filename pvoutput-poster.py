@@ -251,10 +251,12 @@ class PVOutputPoster():
 
         # Remove once metering actually works
         if 'Wh_out' in data:
-            if int(data['Wh_out']) == 0:
+#            if int(data['Wh_out']) == 0:
+            if (int(data['Wh_out']) == 0) or (timestamp >= 1416315600 and timestamp < 1416402000):
                 data['Wh_out'] = self._fake_Wh_out(timestamp)
         if 'prev_Wh_out' in data:
-            if int(data['prev_Wh_out']) == 0:
+#            if int(data['prev_Wh_out']) == 0:
+            if int(data['prev_Wh_out']) == 0 or (timestamp - self.INTERVAL >= 1416315600 and timestamp - self.INTERVAL < 1416402000):
                 self.cursor.execute('''
                     SELECT Wh_out FROM fake_export
                         WHERE timestamp < %d
