@@ -48,6 +48,16 @@ class PVOutputPoster():
         delta_v = v2 - v1
         return float(delta_v) / float(delta_t)
 
+    def _median(list):
+        ordered = sorted(list)
+        samples = len(list)
+        mid = (samples - 1) // 2
+
+        if (samples % 2) == 1:
+            return ordered[mid]
+        else:
+            return (ordered[mid] + ordered[mid + 1]) / 2.0
+
     def _lookup_meter_data(self, timestamp):
         results = {}
 
@@ -173,51 +183,26 @@ class PVOutputPoster():
             return {}
 
         try:
-            # Temperature data
+            # Temperature & voltage data
             cursor.execute('''
-                SELECT avg(Tdsp_degC), avg(Tmos_degC) FROM panels
+                SELECT macrf, avg(Tdsp_degC), avg(Tmos_degC), avg(Vin_V) FROM panels
                     WHERE (timestamp > %d) AND (timestamp <= %d)
+                    GROUP BY macrf;
                 ''' % (
                     timestamp - self.INTERVAL,
                     timestamp + self.INTERVAL,
                 ))
             values = cursor.fetchall()
-
-            if values[0][0] is not None:
-                results['Cdsp_avg'] = values[0][0]
-            if values[0][1] is not None:
-                results['Cmos_avg'] = values[0][1]
-        except:
-            pass
-
-        try:
-            # Voltage data
-            cursor.execute('''
-                SELECT DISTINCT macrf FROM panels
-                    WHERE (timestamp > %d) AND (timestamp <= %d)
-                ''' % (
-                    timestamp - self.INTERVAL,
-                    timestamp + self.INTERVAL,
-                ))
-            values = cursor.fetchall()
-            panels = []
-            v_total = 0
+            t_dsp = []
+            t_mos = []
+            v_in = []
             for v in values:
-                panels.append(v[0])
-            for panel in panels:
-                cursor.execute('''
-                    SELECT avg(Vin_V) FROM panels
-                        WHERE (macrf = '%s') AND
-                            (timestamp > %d) AND (timestamp <= %d)
-                    ''' % (
-                        panel,
-                        timestamp - self.INTERVAL,
-                        timestamp + self.INTERVAL,
-                ))
-                values = cursor.fetchall()
-                v_total += values[0][0]
-
-            results['Vin_total'] = v_total
+                t_dsp.append(v[1])
+                t_mod.append(v[2])
+                v_in.append(v[3])
+            results['Cdsp_avg'] = self._median(t_dsp)
+            results['Cmos_avg'] = self._median(t_mos)
+            results['Vin_avg'] = self._median(v_in)
         except:
             pass
 
@@ -334,8 +319,8 @@ class PVOutputPoster():
         if air_temp is not None:
             pvoutput['v5'] = "%.1f" % air_temp
 
-        if 'Vin_total' in data:
-            pvoutput['v6'] = "%.1f" % data['Vin_total']
+        if 'Vin_avg' in data:
+            pvoutput['v6'] = "%.1f" % data['Vin_avg']
         if 'Cdsp_avg' in data:
             pvoutput['v7'] = "%.1f" % data['Cdsp_avg']
         if 'Cmos_avg' in data:
