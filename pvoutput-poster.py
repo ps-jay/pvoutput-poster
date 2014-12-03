@@ -618,8 +618,7 @@ class PVOutputPoster():
                         VALUES (%s)
                     ''' % (cols[:-2], data[:-2])
                 )
-
-        self.pvo_db.commit()
+                self.pvo_db.commit()
 
         self._fill_in_temperatures((t_end - (4 * 24 * 60 * 60)), t_end)
         self.pvo_db.commit()
