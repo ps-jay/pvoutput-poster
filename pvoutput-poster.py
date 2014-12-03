@@ -26,7 +26,7 @@ class PVOutputPoster():
             'export': 0.08,
         }
 
-        self.INTERVAL = 900
+        self.INTERVAL = 1200
         self.MODULO = (self.INTERVAL/60)
         self.WHCONVERT = (60/self.MODULO)
 
@@ -139,48 +139,21 @@ class PVOutputPoster():
         cursor = db.cursor()
 
         cursor.execute('''
-            SELECT * FROM system
-                WHERE timestamp <= %d
-                ORDER BY timestamp DESC
-                LIMIT 1
-            ''' % timestamp)
+            SELECT macrf, max(Etot_Wh) FROM panels
+                WHERE (timestamp <= %d) AND (timestamp >= %d)
+                GROUP BY macrf
+            ''' % (
+                timestamp,
+                timestamp - (24 * 60 * 60),
+            )
+        )
         values = cursor.fetchall()
         if values == []:
             return {}
-
-        interpolation_needed = True
-        # Find point #1
-        try:
-            # if timestamp matches exactly, no interpolation req'd.
-            interpolation_needed = not ((timestamp - values[0][0]) == 0)
-            results['Wh_gen'] = values[0][2]
-        except:
-            return {}
-
-        # Find point #2
-        first_time = values[0][0]
-        cursor.execute('''
-            SELECT * FROM system
-                WHERE timestamp > %d
-                ORDER BY timestamp ASC
-                LIMIT 1
-            ''' % timestamp)
-        values = cursor.fetchall()
-        if values == []:
-            return {}
-
-        try:
-            second_time = values[0][0]
-
-            if interpolation_needed:
-                inter_gen = self._interpolate_value(
-                    first_time, second_time,
-                    results['Wh_gen'], values[0][2],
-                )
-                ts_diff = timestamp - first_time
-                results['Wh_gen'] += inter_gen * ts_diff
-        except:
-            return {}
+        Etot_Wh = 0
+        for val in values:
+            Etot_Wh += val[1]
+        results['Wh_gen'] = Etot_Wh
 
         try:
             # Temperature & voltage data
