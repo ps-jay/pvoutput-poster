@@ -370,8 +370,7 @@ class PVOutputPoster():
             SELECT * FROM pvoutput
                 WHERE need_upload = 1
                 LIMIT %d
-            ''' % 55
-            #''' % (remaining - 15)
+            ''' % (remaining - 15)
         )
         rows = self.cursor.fetchall()
         for row in rows:
