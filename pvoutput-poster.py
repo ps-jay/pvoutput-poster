@@ -48,7 +48,7 @@ class PVOutputPoster():
         delta_v = v2 - v1
         return float(delta_v) / float(delta_t)
 
-    def _median(list):
+    def _median(self, list):
         ordered = sorted(list)
         samples = len(list)
         mid = (samples - 1) // 2
@@ -159,11 +159,11 @@ class PVOutputPoster():
             # Temperature & voltage data
             cursor.execute('''
                 SELECT macrf, avg(Tdsp_degC), avg(Tmos_degC), avg(Vin_V) FROM panels
-                    WHERE (timestamp > %d) AND (timestamp <= %d)
+                    WHERE (timestamp >= %d) AND (timestamp <= %d)
                     GROUP BY macrf;
                 ''' % (
-                    timestamp - self.INTERVAL,
-                    timestamp + self.INTERVAL,
+                    timestamp - (self.INTERVAL / 2),
+                    timestamp + (self.INTERVAL / 2),
                 ))
             values = cursor.fetchall()
             t_dsp = []
@@ -171,7 +171,7 @@ class PVOutputPoster():
             v_in = []
             for v in values:
                 t_dsp.append(v[1])
-                t_mod.append(v[2])
+                t_mos.append(v[2])
                 v_in.append(v[3])
             results['Cdsp_avg'] = self._median(t_dsp)
             results['Cmos_avg'] = self._median(t_mos)
@@ -541,7 +541,7 @@ class PVOutputPoster():
 
         # another arg
         self.verbose = True
-        
+
         temps = self._get_temperature_data()
         if temps != {}:
             self._update_temperature_db(temps)
