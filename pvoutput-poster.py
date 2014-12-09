@@ -70,7 +70,7 @@ class PVOutputPoster():
                 WHERE timestamp <= %d
                 ORDER BY timestamp DESC
                 LIMIT 1
-            ''' % timestamp - self.INTERVAL)
+            ''' % (timestamp - self.INTERVAL))
         values = cursor.fetchall()
         if values == []:
             return {}
@@ -139,7 +139,7 @@ class PVOutputPoster():
                 WHERE timestamp <= %d
                 ORDER BY timestamp DESC
                 LIMIT 1
-            ''' % timestamp - self.INTERVAL)
+            ''' % (timestamp - self.INTERVAL))
         values = cursor.fetchall()
         if values == []:
             return {}
