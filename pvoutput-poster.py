@@ -554,6 +554,16 @@ class PVOutputPoster():
                 continue
             # print time.strftime("%Y%m%d %H:%M", time.localtime(t))
 
+            meter = self._get_meter_data(t).items()
+            solar = self._get_solar_data(t).items()
+
+            if (((solar == {}) or (meter == {})) and \
+                (t > (time.time() - 24 * 60 * 60))):
+                # if solar or meter has no data, and
+                # 't' is not more than 24-hours ago, then
+                # wait for data (i.e. up to 24 hours for data to appear)
+                continue
+
             data = dict(
                 self._get_meter_data(t).items() +
                 self._get_solar_data(t).items()
