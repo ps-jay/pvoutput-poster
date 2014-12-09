@@ -269,7 +269,8 @@ class PVOutputPoster():
             ''' % (timestamp)
             )
             value = self.cursor.fetchall()
-            if value == []:
+            if ((value == []) or \
+                (value[0][0] == None)):
                 data['prev_Wh_cons'] = 0
             else:
                 data['prev_Wh_cons'] = value[0][0]
