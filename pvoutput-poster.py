@@ -70,24 +70,21 @@ class PVOutputPoster():
                 WHERE timestamp <= %d
                 ORDER BY timestamp DESC
                 LIMIT 1
-            ''' % timestamp)
+            ''' % timestamp - self.INTERVAL)
         values = cursor.fetchall()
         if values == []:
             return {}
 
-        interpolation_needed = True
         try:
             results['Wh_in'] = values[0][1]
             results['Wh_out'] = values[0][2]
-            # if timestamp matches exactly, no interpolation req'd.
-            interpolation_needed = not ((timestamp - values[0][0]) == 0)
         except:
             return {}
 
         first_time = values[0][0]
         cursor.execute('''
             SELECT * FROM metered
-                WHERE timestamp > %d
+                WHERE timestamp => %d
                 ORDER BY timestamp ASC
                 LIMIT 1
             ''' % timestamp)
@@ -98,18 +95,17 @@ class PVOutputPoster():
         try:
             second_time = values[0][0]
 
-            if interpolation_needed:
-                inter_in = self._interpolate_value(
-                    first_time, second_time,
-                    results['Wh_in'], values[0][1],
-                )
-                inter_out = self._interpolate_value(
-                    first_time, second_time,
-                    results['Wh_out'], values[0][2],
-                )
-                ts_diff = timestamp - first_time
-                results['Wh_in'] += inter_in * ts_diff
-                results['Wh_out'] += inter_out * ts_diff
+            inter_in = self._interpolate_value(
+                first_time, second_time,
+                results['Wh_in'], values[0][1],
+            )
+            inter_out = self._interpolate_value(
+                first_time, second_time,
+                results['Wh_out'], values[0][2],
+            )
+            ts_diff = timestamp - first_time
+            results['Wh_in'] += inter_in * ts_diff
+            results['Wh_out'] += inter_out * ts_diff
         except:
             return {}
 
@@ -143,16 +139,14 @@ class PVOutputPoster():
                 WHERE timestamp <= %d
                 ORDER BY timestamp DESC
                 LIMIT 1
-            ''' % timestamp)
+            ''' % timestamp - self.INTERVAL)
         values = cursor.fetchall()
         if values == []:
             return {}
 
-        interpolation_needed = True
-        # Find point #1
+        # XXX: Todo: implement sunlight hours limiter
+
         try:
-            # if timestamp matches exactly, no interpolation req'd.
-            interpolation_needed = not ((timestamp - values[0][0]) == 0)
             results['Wh_gen'] = values[0][2]
         except:
             return {}
@@ -161,7 +155,7 @@ class PVOutputPoster():
         first_time = values[0][0]
         cursor.execute('''
             SELECT * FROM system
-                WHERE timestamp > %d
+                WHERE timestamp => %d
                 ORDER BY timestamp ASC
                 LIMIT 1
             ''' % timestamp)
@@ -172,13 +166,12 @@ class PVOutputPoster():
         try:
             second_time = values[0][0]
 
-            if interpolation_needed:
-                inter_gen = self._interpolate_value(
-                    first_time, second_time,
-                    results['Wh_gen'], values[0][2],
-                )
-                ts_diff = timestamp - first_time
-                results['Wh_gen'] += inter_gen * ts_diff
+            inter_gen = self._interpolate_value(
+                first_time, second_time,
+                results['Wh_gen'], values[0][2],
+            )
+            ts_diff = timestamp - first_time
+            results['Wh_gen'] += inter_gen * ts_diff
         except:
             return {}
 
