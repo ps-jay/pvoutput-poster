@@ -563,6 +563,12 @@ class PVOutputPoster():
                 # if solar or meter has no data, and
                 # 't' is not more than 24-hours ago, then
                 # wait for data (i.e. up to 24 hours for data to appear)
+                sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
+                if solar == {}:
+                    sys.stdout.write("; (no solar data)")
+                if meter == {}:
+                    sys.stdout.write("; (no meter data)")
+                print "; waiting..."
                 continue
 
             data = dict(
