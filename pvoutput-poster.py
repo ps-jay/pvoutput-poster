@@ -26,7 +26,7 @@ class PVOutputPoster():
             'export': 0.08,
         }
 
-        self.INTERVAL = 900
+        self.INTERVAL = 600
         self.MODULO = (self.INTERVAL/60)
         self.WHCONVERT = (60/self.MODULO)
 
@@ -599,8 +599,8 @@ class PVOutputPoster():
                 continue
 
             data = dict(
-                self._get_meter_data(t).items() +
-                self._get_solar_data(t).items()
+                meter +
+                solar
             )
 
             pvoutput = self._calculate_pvoutput(t, data)
