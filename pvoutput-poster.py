@@ -84,7 +84,7 @@ class PVOutputPoster():
         first_time = values[0][0]
         cursor.execute('''
             SELECT * FROM metered
-                WHERE timestamp => %d
+                WHERE timestamp >= %d
                 ORDER BY timestamp ASC
                 LIMIT 1
             ''' % timestamp)
@@ -155,7 +155,7 @@ class PVOutputPoster():
         first_time = values[0][0]
         cursor.execute('''
             SELECT * FROM system
-                WHERE timestamp => %d
+                WHERE timestamp >= %d
                 ORDER BY timestamp ASC
                 LIMIT 1
             ''' % timestamp)
