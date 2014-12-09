@@ -322,28 +322,26 @@ class PVOutputPoster():
         if 'Cmos_avg' in data:
             pvoutput['v8'] = "%.1f" % data['Cmos_avg']
 
-        if (('prev_Wh_out' in data) and
-            ('prev_Wh_in' in data) and
-            ('prev_Wh_gen' in data)):
-                if data['prev_Wh_out'] != 0:
-                    imp = data['Wh_in'] - data['prev_Wh_in']
-                    exp = data['Wh_out'] - data['prev_Wh_out']
-                    gen = data['Wh_gen'] - data['prev_Wh_gen']
-                    net = imp - exp
-                    con = net + gen
-                    day = int(time.strftime("%w", time.gmtime(timestamp)))
-                    hour = int(time.strftime("%H", time.gmtime(timestamp)))
-                    rate = self.TARIFF['offpeak']
-                    if day in self.TARIFF['peak_days']:
-                        for period in self.TARIFF['peak_times']:
-                            if ((hour >= period[0]) and
-                                (hour < period[1])):
-                                rate = self.TARIFF['peak']
-                                break
-                    cost = (net / 1000.0) * rate
-                    if net < 0:
-                        cost = (net / 1000.0) * self.TARIFF['export']
-                    pvoutput['v9'] = "%.2f" % (cost * 100)
+        if (('Wh_gen' in data) and
+            ('prev_Wh_gen' in data) and
+            ('prev_Wh_cons' in data) and
+            ('v3' in pvoutput)):
+                gen = data['Wh_gen'] - data['prev_Wh_gen']
+                con = int(pvoutput['v3']) - data['prev_Wh_cons']
+                net = con - gen
+                day = int(time.strftime("%w", time.gmtime(timestamp)))
+                hour = int(time.strftime("%H", time.gmtime(timestamp)))
+                rate = self.TARIFF['offpeak']
+                if day in self.TARIFF['peak_days']:
+                    for period in self.TARIFF['peak_times']:
+                        if ((hour >= period[0]) and
+                            (hour < period[1])):
+                            rate = self.TARIFF['peak']
+                            break
+                cost = (net / 1000.0) * rate
+                if net < 0:
+                    cost = (net / 1000.0) * self.TARIFF['export']
+                pvoutput['v9'] = "%.2f" % (cost * 100)
 
         if self.verbose:
             sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
