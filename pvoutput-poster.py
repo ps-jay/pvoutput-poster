@@ -8,6 +8,7 @@ import sys
 import time
 import threading
 import urllib
+import astral
 
 
 class PVOutputPoster():
@@ -42,6 +43,17 @@ class PVOutputPoster():
         self.pvo_db = sqlite3.connect(self.PVO_DB)
         self.pvo_db.row_factory = sqlite3.Row
         self.cursor = self.pvo_db.cursor()
+
+        self.location = astral.Location(
+            info=(
+                'Blackburn',
+                'Victoria',
+                -37.82,
+                145.15,
+                'Australia/Melbourne',
+                50
+            )
+        )
 
     def _interpolate_value(self, t1, t2, v1, v2):
         delta_t = t2 - t1
