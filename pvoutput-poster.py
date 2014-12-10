@@ -79,10 +79,10 @@ class PVOutputPoster():
 
         cursor.execute('''
             SELECT * FROM metered
-                WHERE timestamp <= %d
+                WHERE timestamp < %d
                 ORDER BY timestamp DESC
                 LIMIT 1
-            ''' % (timestamp - self.INTERVAL))
+            ''' % timestamp)
         values = cursor.fetchall()
         if values == []:
             return {}
@@ -148,10 +148,10 @@ class PVOutputPoster():
 
         cursor.execute('''
             SELECT * FROM system
-                WHERE timestamp <= %d
+                WHERE timestamp < %d
                 ORDER BY timestamp DESC
                 LIMIT 1
-            ''' % (timestamp - self.INTERVAL))
+            ''' % timestamp)
         values = cursor.fetchall()
         if values == []:
             return {}
