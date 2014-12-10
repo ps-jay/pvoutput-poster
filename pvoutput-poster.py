@@ -9,6 +9,7 @@ import time
 import threading
 import urllib
 import astral
+import datetime
 
 
 class PVOutputPoster():
@@ -156,8 +157,6 @@ class PVOutputPoster():
         if values == []:
             return {}
 
-        # XXX: Todo: implement sunlight hours limiter
-
         try:
             results['Wh_gen'] = values[0][2]
         except:
@@ -253,6 +252,34 @@ class PVOutputPoster():
 
         if 'Wh_gen' in data:
             pvoutput['v1'] = "%.0f" % data['Wh_gen']
+
+        # Don't "generate" after sunset (could happen if we have gaps in data)
+        # Don't "generate" before sunrise (could happen if we have gaps in data)
+        if (('Wh_gen' in data) and
+            ('prev_Wh_gen' in data)):
+            if data['Wh_gen'] != data['prev_Wh_gen']:
+                ts = time.localtime(timestamp)
+                day = datetime.date(ts.tm_year, ts.tm_mon, ts.tm_mday)
+                dt = datetime.datetime.fromtimestamp(
+                    timestamp,
+                    self.location.sunset(day).tzinfo
+                )
+                if dt > self.location.sunset(day):
+                    print "ERROR: generation after sunset"
+                    print "timestamp=%s; prev_Wh_gen=%s; Wh_gen=%s" % (
+                        timestamp,
+                        data['prev_Wh_gen'],
+                        data['Wh_gen'],
+                    )
+                    sys.exit(51)
+                elif dt < self.location.sunrise(day):
+                    print "ERROR: generation before sunrise"
+                    print "timestamp=%s; prev_Wh_gen=%s; Wh_gen=%s" % (
+                        timestamp,
+                        data['prev_Wh_gen'],
+                        data['Wh_gen'],
+                    )
+                    sys.exit(52)
 
         # Remove once metering actually works
         if 'Wh_out' in data:
