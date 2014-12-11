@@ -462,6 +462,7 @@ class PVOutputPoster():
         self.cursor.execute('''
             SELECT * FROM pvoutput
                 WHERE need_upload = 1
+                ORDER BY timestamp ASC
                 LIMIT %d
             ''' % (remaining - 15)
         )
