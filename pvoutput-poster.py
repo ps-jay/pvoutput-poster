@@ -250,22 +250,39 @@ class PVOutputPoster():
     def _calculate_pvoutput(self, timestamp, data):
         pvoutput = {}
 
+        # Have the prev v1 value at hand
+        self.cursor.execute('''
+            SELECT timestamp, v1 FROM pvoutput
+                WHERE timestamp < %d
+                ORDER BY timestamp DESC
+                LIMIT 1
+        ''' % (timestamp)
+        )
+        value = self.cursor.fetchall()
+        if value == []:
+            prev_v1 = 0
+            prev_v1_ts = 0
+        else:
+            prev_v1 = value[0][1]
+            prev_v1_ts = value[0][0]
+
         if 'Wh_gen' in data:
             # If the CDD solar basestation is restarted, it resets to 0Wh
             # until the panels talk to it again, protect against this...
-            self.cursor.execute('''
-                SELECT v1 FROM pvoutput
-                    WHERE timestamp < %d
-                    ORDER BY timestamp DESC
-                    LIMIT 1
-            ''' % (timestamp)
-            )
-            value = self.cursor.fetchall()
-            prev_v1 = value[0][0]
+            #
+            # Alternatively, sometimes a panel is "lost" and the value drops
+            # Protect against this too
             if int("%.0f" % data['Wh_gen']) < prev_v1:
-                print "Wh_gen < prev_v1: work around by setting Wh_gen = prev_v1"
-                data['Wh_gen'] = prev_v1
-                data['prev_Wh_gen'] = prev_v1
+                sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
+                print "; Wh_gen: %s < prev: %s; skip" % (
+                    int("%.0f" % data['Wh_gen']),
+                    prev_v1,
+                )
+                del(data['Wh_gen'])
+        if 'prev_Wh_gen' in data:
+            if prev_v1_ts < (timestamp - self.INTERVAL):
+                # if there's no prev_v1, then this is probably inaccurate
+                del(data['prev_Wh_gen'])
 
         if (('Wh_gen' in data) and
             ('prev_Wh_gen' in data)):
@@ -284,13 +301,9 @@ class PVOutputPoster():
                 ss = self.location.sunset(day)
                 ss_adj = ss + datetime.timedelta(0, self.INTERVAL)
                 if dt > ss_adj:
-                    print "ERROR: generation after sunset"
-                    print "timestamp=%s; prev_Wh_gen=%s; Wh_gen=%s" % (
-                        timestamp,
-                        data['prev_Wh_gen'],
-                        data['Wh_gen'],
-                    )
-                    sys.exit(51)
+                    print "ERROR: generation after sunset setting to prev. value"
+                    data['Wh_gen'] = prev_v1
+                    data['prev_Wh_gen'] = prev_v1
                 elif dt < sr_adj:
                     print "ERROR: generation before sunrise"
                     print "timestamp=%s; prev_Wh_gen=%s; Wh_gen=%s" % (
