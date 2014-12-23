@@ -403,8 +403,8 @@ class PVOutputPoster():
                 gen = data['Wh_gen'] - data['prev_Wh_gen']
                 con = int(pvoutput['v3']) - data['prev_Wh_cons']
                 net = con - gen
-                day = int(time.strftime("%w", time.gmtime(timestamp)))
-                hour = int(time.strftime("%H", time.gmtime(timestamp)))
+                day = int(time.strftime("%w", time.localtime(timestamp)))
+                hour = int(time.strftime("%H", time.localtime(timestamp)))
                 rate = self.TARIFF['offpeak']
                 if day in self.TARIFF['peak_days']:
                     for period in self.TARIFF['peak_times']:
