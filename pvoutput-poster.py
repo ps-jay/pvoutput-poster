@@ -662,7 +662,10 @@ class PVOutputPoster():
                 if meter == {}:
                     sys.stdout.write("; (no meter data)")
                 print "; waiting..."
-                continue
+                self.pvo_db.commit()
+                self.cursor.close()
+                self.pvo_db.close()
+                sys.exit(50)
 
             data = dict(
                 meter +
@@ -670,7 +673,14 @@ class PVOutputPoster():
             )
 
             pvoutput = self._calculate_pvoutput(t, data)
-            if pvoutput is not None:
+            if pvoutput is None:
+                sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
+                print "; (pvoutput is None)"
+                self.pvo_db.commit()
+                self.cursor.close()
+                self.pvo_db.close()
+                sys.exit(49)
+            else:
                 cols = "timestamp, need_upload, "
                 data = "%s, 1, " % t
                 for key in pvoutput:
