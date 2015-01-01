@@ -652,7 +652,7 @@ class PVOutputPoster():
             solar = self._get_solar_data(t).items()
             # At this point, meter & solar are lists with tuples
 
-            if (((solar == []) or (meter == [] and \
+            if (((solar == []) or (meter == [])) and \
                 (t > (time.time() - 24 * 60 * 60))):
                 # if solar or meter has no data, and
                 # 't' is not more than 24-hours ago, then
