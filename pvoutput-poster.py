@@ -640,7 +640,7 @@ class PVOutputPoster():
             self._update_temperature_db(temps)
 
         t_start = int(self._get_last_entry() + 60)
-        t_end = int(time.time() - (20 * 60))
+        t_end = int(time.time() - (self.INTERVAL))
 
         for t in range(t_start, t_end):
             if (((int(time.strftime("%M", time.gmtime(t))) % self.MODULO) != 0) or
@@ -650,8 +650,9 @@ class PVOutputPoster():
 
             meter = self._get_meter_data(t).items()
             solar = self._get_solar_data(t).items()
+            # At this point, meter & solar are lists with tuples
 
-            if (((solar == {}) or (meter == {})) and \
+            if (((solar == []) or (meter == [] and \
                 (t > (time.time() - 24 * 60 * 60))):
                 # if solar or meter has no data, and
                 # 't' is not more than 24-hours ago, then
