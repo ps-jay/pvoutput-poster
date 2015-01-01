@@ -21,8 +21,8 @@ class PVOutputPoster():
         self.PVO_DB = '/opt/energy/pvoutput.sqlite'
         self.WEATHER_JSON = '/var/opt/energy/weather.json'
         self.TARIFF = {
-            'peak': 0.3036,
-            'offpeak': 0.1386,
+            'peak': 0.3080,
+            'offpeak': 0.13915,
             'peak_days': [1, 2, 3, 4, 5],
             'peak_times': [(7, 23)],
             'export': 0.08,
