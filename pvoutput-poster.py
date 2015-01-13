@@ -657,7 +657,7 @@ class PVOutputPoster():
                 # if solar or meter has no data, and
                 # 't' is not more than 24-hours ago, then
                 # wait for data (i.e. up to 24 hours for data to appear)
-                sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
+                sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(t)))
                 if solar == {}:
                     sys.stdout.write("; (no solar data)")
                 if meter == {}:
@@ -675,12 +675,12 @@ class PVOutputPoster():
 
             pvoutput = self._calculate_pvoutput(t, data)
             if pvoutput is None:
-                sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
+                sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(t)))
                 print "; (pvoutput is None)"
                 self.pvo_db.commit()
                 self.cursor.close()
                 self.pvo_db.close()
-                sys.exit(49)
+                sys.exit(51)
             else:
                 cols = "timestamp, need_upload, "
                 data = "%s, 1, " % t
