@@ -448,14 +448,16 @@ class PVOutputPoster():
             conn.request("GET", self.PVO_GETSTATUS, None, headers)
             response = conn.getresponse()
             remaining = response.getheader('x-rate-limit-remaining')
-            if remaining is None:
+            if remaining is not None:
+                remaining = int(remaining)
+                if remaining <= 15:
+                    print "ERROR: less than 15 API calls remaining"
+                    return
+            else:
+                print "ERROR: didn't get a x-rate-limit-remaining result"
                 return
-            remaining = int(remaining)
         except Exception as e:
             print "ERROR: When quering API limit: %s" % str(e)
-
-        if remaining <= 15:
-            print "ERROR: less than 15 API calls remaining"
             return
 
         # Find stuff to upload
