@@ -660,15 +660,15 @@ class PVOutputPoster():
                 # 't' is not more than 24-hours ago, then
                 # wait for data (i.e. up to 24 hours for data to appear)
                 sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(t)))
-                if solar == {}:
+                if solar == []:
                     sys.stdout.write("; (no solar data)")
-                if meter == {}:
+                if meter == []:
                     sys.stdout.write("; (no meter data)")
                 print "; waiting..."
                 self.pvo_db.commit()
                 self.cursor.close()
                 self.pvo_db.close()
-                sys.exit(50)
+                sys.exit(50)  ## Remove when happy with this code path
 
             data = dict(
                 meter +
