@@ -140,6 +140,21 @@ class PVOutputPoster():
 
         return results
 
+    def _lookup_max_solar_data(self, timestamp):
+        results = {}
+
+        # Solar data
+        db = sqlite3.connect(self.SOLAR_DB)
+        cursor = db.cursor()
+
+        cursor.execute('SELECT MAX(etot_Wh) FROM system WHERE timestamp < %d' % timestamp)
+        values = cursor.fetchall()
+
+        try:
+            return values[0][0]
+        except:
+            return None
+
     def _lookup_solar_data(self, timestamp):
         results = {}
 
@@ -220,9 +235,12 @@ class PVOutputPoster():
         if results == {}:
             return results
 
+        max = self._lookup_max_solar_data(timestamp - self.INTERVAL)
         previous_results = self._lookup_solar_data(timestamp - self.INTERVAL)
         if 'Wh_gen' in previous_results:
             results['prev_Wh_gen'] = previous_results['Wh_gen']
+            if results['prev_Wh_gen'] < max:
+                results['prev_Wh_gen'] = max
 
         return results
 
@@ -274,11 +292,11 @@ class PVOutputPoster():
             # Protect against this too
             if int("%.0f" % data['Wh_gen']) < prev_v1:
                 sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
-                print "; Wh_gen: %s < prev: %s; skip" % (
+                print "; Wh_gen: %s < prev: %s; using prev value" % (
                     int("%.0f" % data['Wh_gen']),
                     prev_v1,
                 )
-                del(data['Wh_gen'])
+                data['Wh_gen'] = data['prev_Wh_gen']
         if 'prev_Wh_gen' in data:
             if prev_v1_ts < (timestamp - self.INTERVAL):
                 # if there's no prev_v1, then this is probably inaccurate
@@ -568,6 +586,8 @@ class PVOutputPoster():
 
     def _update_temperature_db(self, temps):
         for temp in temps:
+            if temps[temp] is None:
+                continue
             self.cursor.execute('''
                 INSERT OR REPLACE INTO temperature VALUES (
                     ?, ?
