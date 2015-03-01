@@ -323,7 +323,7 @@ class PVOutputPoster():
                     data['Wh_gen'] = prev_v1
                     data['prev_Wh_gen'] = prev_v1
                 elif dt < sr_adj:
-                    print "ERROR: generation before sunrise"
+                    print "ERROR: generation before sunrise (%s)" % sr_adj
                     print "timestamp=%s; prev_Wh_gen=%s; Wh_gen=%s" % (
                         timestamp,
                         data['prev_Wh_gen'],
@@ -686,9 +686,7 @@ class PVOutputPoster():
                     sys.stdout.write("; (no meter data)")
                 print "; waiting..."
                 self.pvo_db.commit()
-                self.cursor.close()
-                self.pvo_db.close()
-                sys.exit(50)  ## Remove when happy with this code path
+                continue
 
             data = dict(
                 meter +
