@@ -438,13 +438,27 @@ class PVOutputPoster():
         if self.verbose:
             sys.stdout.write("%s" % time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp)))
             if 'Wh_in' in data:
-                sys.stdout.write("; import=%dWh" % data['Wh_in'])
+                sys.stdout.write("; import=%dWh (%dWh total)" % (
+                    data['Wh_in'] - data['prev_Wh_in'],
+                    data['Wh_in'],
+                ))
             if 'Wh_out' in data:
-                sys.stdout.write("; export=%dWh" % data['Wh_out'])
+                sys.stdout.write("; export=%dWh (%dWh total)" % (
+                    data['Wh_out'] - data['prev_Wh_out'],
+                    data['Wh_out'],
+                ))
             if 'v3' in pvoutput:
-                sys.stdout.write("; consume=%dWh" % int(pvoutput['v3']))
+                sys.stdout.write("; consume=%dWh (%dWh total)" % (
+                    int(pvoutput['v3']) - data['prev_Wh_cons'],
+                    int(pvoutput['v3']),
+                ))
             if 'v1' in pvoutput:
-                sys.stdout.write("; produce=%dWh" % int(pvoutput['v1']))
+                sys.stdout.write("; produce=%dWh (%dWh total)" % (
+                    data['Wh_gen'] - data['prev_Wh_gen'],
+                    int(pvoutput['v1']),
+                ))
+            if net is not None:
+                sys.stdout.write("; net=%dWh" % net)
             if 'v9' in pvoutput:
                 sys.stdout.write("; cost=%sc" % pvoutput['v9'])
             print ""
