@@ -16,10 +16,10 @@ class PVOutputPoster():
 
     def __init__(self):
         # XXX Todo: Convert to argparse, or config file
-        self.METER_DB = '/opt/energy/raven.sqlite'
-        self.SOLAR_DB = '/opt/energy/solar.sqlite'
-        self.PVO_DB = '/opt/energy/pvoutput.sqlite'
-        self.WEATHER_JSON = '/var/opt/energy/weather.json'
+        self.METER_DB = '/data/raven.sqlite'
+        self.SOLAR_DB = '/data/solar.sqlite'
+        self.PVO_DB = '/data/pvoutput.sqlite'
+        self.WEATHER_JSON = '/data/weather.json'
         self.TARIFF = {
             'peak': 0.3080,
             'offpeak': 0.13915,
