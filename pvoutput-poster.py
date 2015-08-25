@@ -25,7 +25,7 @@ class PVOutputPoster():
             'offpeak': 0.13915,
             'peak_days': [1, 2, 3, 4, 5],
             'peak_times': [(7, 23)],
-            'export': 0.08,
+            'export': 0.065,
         }
 
         self.INTERVAL = 600
